@@ -1,49 +1,44 @@
 import re
 import time
+import tkinter
 from tkinter import *
 from tkinter import ttk
 import telnetlib
 from tkinter import messagebox
 import os
 
-text = ''
 user = 'alex'
 password = 'cisco123'
-a = ''
 current_directory = os.getcwd()
-licenses = {
-    "enh": {"name": "ENHANCED_LAYER2_PKG", "state": 0},
-    "ent": {"name": "ENTERPRISE_PKG", "state": 0},
-    "fc": {"name": "FC_FEATURES_PKG", "state": 0},
-    "fcoe": {"name": "FCOE_NPV_PKG", "state": 0},
-    "fm": {"name": "FM_SERVER_PKG", "state": 0},
-    "lan_base": {"name": "LAN_BASE_SERVICES_PKG", "state": 0},
-    "lan_ent": {"name": "LAN_ENTERPRISE_SERVICES_PKG", "state": 0},
-    "ntwrk": {"name": "NETWORK_SERVICES_PKG", "state": 0},
-    "vmfex": {"name": "VMFEX_FEATURE_PKG", "state": 0},
-    "custom" : {}
-}
-selected_dict = {}
 needed_licenses = []
-license_test = []
-
-
-serial_number = 'FOX1828GX44'
+licenses = {
+    "enh": "ENHANCED_LAYER2_PKG",
+    "ent": "ENTERPRISE_PKG",
+    "fc": "FC_FEATURES_PKG",
+    "fcoe": "FCOE_NPV_PKG",
+    "fm": "FM_SERVER_PKG",
+    "lan_base": "LAN_BASE_SERVICES_PKG",
+    "lan_ent": "LAN_ENTERPRISE_SERVICES_PKG",
+    "ntwrk": "NETWORK_SERVICES_PKG",
+    "vmfex": "VMFEX_FEATURE_PKG",
+    "custom": ""
+}
 
 
 def clicked():
+    """ Обработка нажатия кнопки """
     if 'custom' in needed_licenses and custom_license_entry.get() != '':
-        licenses['custom']['name'] = custom_license_entry.get()
+        licenses['custom'] = custom_license_entry.get()
     if (vdh.get() or sku.get()) == '' or needed_licenses == []:
         messagebox.showinfo('Ошибка', 'Заполните VDH и SKU и отметьте нужные лицензии!')
     else:
         generate_licenses()
 
+
 def generate_licenses():
     """ Подключение по telnet и генерация лицензий """
     line1 = f"printf '{vdh.get().replace('VDH=', '')}"
     line2 = "' > serialno"
-    sign = ''
     try:
         print('Подключение к Nexus с root правами... ', end='')
         tn = telnet_connection()
@@ -70,7 +65,9 @@ def generate_licenses():
     except TimeoutError:
         messagebox.showinfo('Ошибка', 'Проблема с подключением к Nexus')
 
+
 def get_root():
+    """ Получение root прав"""
     tn_root = telnetlib.Telnet('172.25.80.171', timeout=10)
     tn_root.read_until(b"login: ")
     tn_root.write(b"admin\n")
@@ -94,6 +91,7 @@ def get_root():
     time.sleep(1)
     tn_root.close()
 
+
 def create_license_files(tn):
     """ Создание и загрузка файлов лицензий на Nexus """
     print('Создание файлов лицензий в bootflash... ', end='')
@@ -101,15 +99,15 @@ def create_license_files(tn):
     global licenses_not_in_bootflash
     licenses_not_in_bootflash = []
     for license in needed_licenses:
-        file_name = f'{vdh.get().replace("VDH=", "")}_{licenses[license]["name"]}.lic'
-        current_license = f'SERVER this_host ANY\nVENDOR cisco\nINCREMENT {licenses[license]["name"]} cisco 1.0 permanent uncounted \\\n    VENDOR_STRING=<LIC_SOURCE>MDS_SWIFT</LIC_SOURCE><SKU>{sku.get()}</SKU> \\\n    HOSTID=VDH={vdh.get().replace("VDH=", "")} \\\n    NOTICE="<LicFileID>20220316153207275</LicFileID><LicLineID>1</LicLineID> \\\n    <PAK></PAK>" SIGN=9F924AA63160'
+        file_name = f'{vdh.get().replace("VDH=", "")}_{licenses[license]}.lic'
+        current_license = f'SERVER this_host ANY\nVENDOR cisco\nINCREMENT {licenses[license]} cisco 1.0 permanent uncounted \\\n    VENDOR_STRING=<LIC_SOURCE>MDS_SWIFT</LIC_SOURCE><SKU>{sku.get()}</SKU> \\\n    HOSTID=VDH={vdh.get().replace("VDH=", "")} \\\n    NOTICE="<LicFileID>20220316153207275</LicFileID><LicLineID>1</LicLineID> \\\n    <PAK></PAK>" SIGN=9F924AA63160'
         tn.write(b"printf '" + current_license.encode('ascii') + b"' > /bootflash/" + file_name.encode('ascii') + b"\n")
     tn.write(b'cd /bootflash/\n')
     tn.write(b'ls -l\n')
     time.sleep(1)
     bootflash_licenses = re.findall(r'\S+.lic', tn.read_very_eager().decode('utf-8'))
     for license in needed_licenses:
-        file_name = f'{vdh.get().replace("VDH=", "")}_{licenses[license]["name"]}.lic'
+        file_name = f'{vdh.get().replace("VDH=", "")}_{licenses[license]}.lic'
         if file_name not in bootflash_licenses:
             all_licenses_in_bootflash = False
             licenses_not_in_bootflash.append(file_name)
@@ -144,25 +142,17 @@ def get_license_sign(tn, line1, line2):
     time.sleep(1)
     tn.write(line1.encode('ascii') + b'\\x00\\x00' + line2.encode('ascii') + b'\n')
     for license in needed_licenses:
-        file_name = f'{vdh.get().replace("VDH=", "")}_{licenses[license]["name"]}.lic'
+        file_name = f'{vdh.get().replace("VDH=", "")}_{licenses[license]}.lic'
         print(f'Получение подписи для {file_name}... ', end='')
-        # print('Переход в gdb liccheck')
         tn.write(b'gdb liccheck\n')
         time.sleep(1)
-        # print('liccheck')
         tn.write(b'break *0x0805D4E7\n')
         time.sleep(1)
-        # print('break')
         tn.write(b"r -v /bootflash/" + file_name.encode('ascii') + b"\n")
         time.sleep(1)
         tn.write(b'info registers\n')
-        # print('info registers')
         time.sleep(3)
-        # print(tn.read_until(b'ebx'))
         edx = re.search(r'edx\s+(0x\S+)', tn.read_until(b'ebx').decode('utf-8'))[1]
-        # print(edx)
-        # edx = re.search(r'edx', tn.read_very_eager().decode('utf-8'))
-        # print(f'edx {edx}')
         tn.write(b'x/g  ' + edx.encode('ascii') + b'\n')
         time.sleep(2)
         reverse_sign = re.search(r'(0x00\S+)', tn.read_very_eager().decode('utf-8').replace("\t", "\n"))[1][
@@ -171,49 +161,46 @@ def get_license_sign(tn, line1, line2):
         tn.write(b'quit\n')
         time.sleep(1)
         tn.write(b'y\n')
-        # print(reverse_sign)
         split_by_two = re.findall(r'..', reverse_sign)
         sign = ''
         for couple in reversed(split_by_two):
             sign += str(couple).upper()
-        # print(sign)
         f = open(file_name, 'w')
         f.write(
-            f'SERVER this_host ANY\nVENDOR cisco\nINCREMENT {licenses[license]["name"]} cisco 1.0 permanent uncounted \\\n    VENDOR_STRING=<LIC_SOURCE>MDS_SWIFT</LIC_SOURCE><SKU>{sku.get()}</SKU> \\\n    HOSTID=VDH={vdh.get().replace("VDH=", "")} \\\n    NOTICE="<LicFileID>20220316153207275</LicFileID><LicLineID>1</LicLineID> \\\n    <PAK></PAK>" SIGN={sign}')
+            f'SERVER this_host ANY\nVENDOR cisco\nINCREMENT {licenses[license]} cisco 1.0 permanent uncounted \\\n    VENDOR_STRING=<LIC_SOURCE>MDS_SWIFT</LIC_SOURCE><SKU>{sku.get()}</SKU> \\\n    HOSTID=VDH={vdh.get().replace("VDH=", "")} \\\n    NOTICE="<LicFileID>20220316153207275</LicFileID><LicLineID>1</LicLineID> \\\n    <PAK></PAK>" SIGN={sign}')
         print('Done')
         print(f'Удаление {file_name} из bootflash...', end='')
         tn.write(b'rm /bootflash/' + file_name.encode('ascii') + b'\n')
         print(f'Done')
 
-def update_needed_licenses(state, license):
-    # print(license)
-    if state.get() == 0 and license in needed_licenses:
+def update_needed_licenses(license):
+    if license in needed_licenses:
         needed_licenses.remove(license)
-    elif state.get() == 1 and license not in needed_licenses:
+    elif license not in needed_licenses:
         needed_licenses.append(license)
-    # print(needed_licenses)
     return needed_licenses
-    updated_type_list = []
-    for item in inventory['total']['items'].items():
-        if item[1]['type'] in type_list:
-            updated_type_list.append(item[1]['name'])
-    combo['values'] = (sorted(updated_type_list))
-    combo.current(0)
+
 
 if __name__ == "__main__":
-
+    """ Основная функция, вывод на экран """
     window = Tk()
     window.title("License Generator")
-    window.geometry("300x310")
+    window.geometry("300x330")
 
     frame = ttk.Frame(padding=[0, 0])
-    frame.grid(column=0, row=12, padx=9)
+    frame.grid(column=0, row=12, padx=5)
 
-    vdh_frame = ttk.Frame(padding=[0, 0])  #borderwidth=1, relief=SOLID,
-    vdh_frame.grid(column=0, row=0)
+    vdh_frame = ttk.Frame(padding=[0, 0])  # borderwidth=1, relief=SOLID,
+    vdh_frame.grid(column=0, row=0, sticky='w', padx=5)
 
     sku_frame = ttk.Frame(padding=[0, 0])
-    sku_frame.grid(column=0, row=1)
+    sku_frame.grid(column=0, row=1, sticky='w', padx=5)
+
+    licenses_frame = ttk.Frame(padding=[0, 0])
+    licenses_frame.grid(column=0, row=2, sticky='w', padx=5)
+
+    mds_licenses_frame = ttk.Frame(padding=[0, 0])
+    mds_licenses_frame.grid(column=1, row=2, sticky='w', padx=5)
 
     vdh = Entry(vdh_frame, width=30)
     vdh.grid(column=0, row=0, sticky='w')
@@ -227,66 +214,20 @@ if __name__ == "__main__":
     sku_lbl = Label(sku_frame, text='SKU')
     sku_lbl.grid(column=1, row=0, sticky='w')
 
-    enh = IntVar()
-    enh.set(0)
-    enh_checkbutton = ttk.Checkbutton(text="ENHANCED_LAYER2_PKG", state=ACTIVE, variable=enh, command=lambda: update_needed_licenses(enh, 'enh'))
-    enh_checkbutton.grid(column=0, row=2, sticky='w', padx=9)
-
-    ent = IntVar()
-    ent.set(0)
-    ent_checkbutton = ttk.Checkbutton(text="ENTERPRISE_PKG", state=ACTIVE, variable=ent,
-                                      command=lambda: update_needed_licenses(ent, 'ent'))
-    ent_checkbutton.grid(column=0, row=3, sticky='w', padx=9)
-
-    fc = IntVar()
-    fc.set(0)
-    fc_checkbutton = ttk.Checkbutton(text="FC_FEATURES_PKG", state=ACTIVE, variable=fc,
-                                      command=lambda: update_needed_licenses(fc, 'fc'))
-    fc_checkbutton.grid(column=0, row=4, sticky='w', padx=9)
-
-    fcoe = IntVar()
-    fcoe.set(0)
-    fcoe_checkbutton = ttk.Checkbutton(text="FCOE_NPV_PKG", state=ACTIVE, variable=fcoe,
-                                     command=lambda: update_needed_licenses(fcoe, 'fcoe'))
-    fcoe_checkbutton.grid(column=0, row=5, sticky='w', padx=9)
-
-    fm = IntVar()
-    fm.set(0)
-    fm_checkbutton = ttk.Checkbutton(text="FM_SERVER_PKG", state=ACTIVE, variable=fm,
-                                       command=lambda: update_needed_licenses(fm, 'fm'))
-    fm_checkbutton.grid(column=0, row=6, sticky='w', padx=9)
-
-    lan_base = IntVar()
-    lan_base.set(0)
-    lan_base_checkbutton = ttk.Checkbutton(text="LAN_BASE_SERVICES_PKG", state=ACTIVE, variable=lan_base,
-                                           command=lambda: update_needed_licenses(lan_base, 'lan_base'))
-    lan_base_checkbutton.grid(column=0, row=7, sticky='w', padx=9)
-
-    lan_ent = IntVar()
-    lan_ent.set(0)
-    lan_ent_checkbutton = ttk.Checkbutton(text="LAN_ENTERPRISE_SERVICES_PKG", state=ACTIVE, variable=lan_ent,
-                                           command=lambda: update_needed_licenses(lan_ent, 'lan_ent'))
-    lan_ent_checkbutton.grid(column=0, row=8, sticky='w', padx=9)
-
-    ntwrk = IntVar()
-    ntwrk.set(0)
-    ntwrk_checkbutton = ttk.Checkbutton(text="NETWORK_SERVICES_PKG", state=ACTIVE, variable=ntwrk,
-                                          command=lambda: update_needed_licenses(ntwrk, 'ntwrk'))
-    ntwrk_checkbutton.grid(column=0, row=9, sticky='w', padx=9)
-
-    vmfex = IntVar()
-    vmfex.set(0)
-    vmfex_checkbutton = ttk.Checkbutton(text="VMFEX_FEATURE_PKG", state=ACTIVE, variable=vmfex,
-                                        command=lambda: update_needed_licenses(vmfex, 'vmfex'))
-    vmfex_checkbutton.grid(column=0, row=10, sticky='w', padx=9)
+    for lic in licenses:
+        if lic != 'custom':
+            var = tkinter.BooleanVar()
+            cb = Checkbutton(licenses_frame, text=licenses[lic], state=ACTIVE, variable=var, onvalue=True,
+                             offvalue=False,
+                             command=lambda lic=lic: update_needed_licenses(lic))
+            cb.grid(sticky="w")
 
     custom_license_entry = Entry(frame, width=20)
-    custom_license_entry.grid(column=1, row=0, sticky='w')
 
-    custom_lic = IntVar()
-    custom_lic.set(0)
-    custom_lic_checkbutton = ttk.Checkbutton(frame, text="", state=ACTIVE, variable=custom_lic,
-                                      command=lambda: update_needed_licenses(custom_lic, 'custom'))
+    custom_lic = tkinter.BooleanVar()
+    custom_lic_checkbutton = Checkbutton(frame, text=custom_license_entry.grid(column=1, row=0, sticky='w'),
+                                         state=ACTIVE, variable=custom_lic,
+                                         command=lambda: update_needed_licenses('custom'))
     custom_lic_checkbutton.grid(column=0, row=0, sticky='w')
 
     custom_license_lbl = Label(frame, text='Custom license')
