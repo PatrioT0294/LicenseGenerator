@@ -6,39 +6,45 @@ from tkinter import ttk
 import telnetlib
 from tkinter import messagebox
 import os
+import random
+
+
 
 user = 'alex'
 password = 'cisco123'
 current_directory = os.getcwd()
+licenses_for_generate = {}
 needed_licenses = []
-needed_licenses_counted = []
 current_switch_type = 'all'
 device_type = ''
+new = 'INCREMENT {license_name} cisco 1.0 permanent {count} \\\n    VENDOR_STRING=<LIC_SOURCE>MDS_SWIFT</LIC_SOURCE><SKU>{sku_string}</SKU> \\\n    HOSTID=VDH={vdh_string} \\\n    NOTICE="<LicFileID>{license_id}</LicFileID><LicLineID>{file_id}</LicLineID> \\\n    <PAK></PAK>" SIGN={sign}'
+old = 'INCREMENT {license_name} cisco 1.0 permanent {count} VENDOR_STRING=MDS \\\n        HOSTID=VDH={vdh_string} \\\n        NOTICE=<LicFileID>{license_id}</LicFileID><LicLineID>{file_id}</LicLineID><PAK>{sku_string}{vdh_string}AMS15160167</PAK> \\\n        SIGN={sign}'
+sku_string = ''
+vdh_string = ''
+final_license_list = []
 licenses = {
     "nexus": {
         "uncounted": {
-            "enh": "ENHANCED_LAYER2_PKG",
-            "ent": "ENTERPRISE_PKG",
-            "fc": "FC_FEATURES_PKG",
-            "fcoe": "FCOE_NPV_PKG",
-            "fm": "FM_SERVER_PKG",
-            "lan_base": "LAN_BASE_SERVICES_PKG",
-            "lan_ent": "LAN_ENTERPRISE_SERVICES_PKG",
-            "ntwrk": "NETWORK_SERVICES_PKG",
-            "vmfex": "VMFEX_FEATURE_PKG",
-            "lic_pkg_24": "24P_LIC_PKG",
-            "lic_upg_24": "24P_UPG_PKG",
-            "custom": ""
+            "ENHANCED_LAYER2_PKG": "ENHANCED_L2",
+            "ENTERPRISE_PKG": "ENTERPRISE",
+            "FC_FEATURES_PKG": "FC_FEATURES",
+            "FCOE_NPV_PKG": "FCOE_NPV",
+            "FM_SERVER_PKG": "FM_SERVER",
+            "LAN_BASE_SERVICES_PKG": "LAN_BASE",
+            "LAN_ENTERPRISE_SERVICES_PKG": "LAN_ENT",
+            "NETWORK_SERVICES_PKG": "NETWORK",
+            "VMFEX_FEATURE_PKG": "VMFEX",
+            "24P_LIC_PKG": "24P_LIC_PKG",
+            "24P_UPG_PKG": "24P_UPG_PKG"
         }
     },
     "mds": {
         "uncounted": {
-            "mds_ent": "ENTERPRISE_PKG",
-            "san": "SAN_TELEMETRY_PKG",
-            "san_a": "SAN_ANALYTICS_PKG",
-            "mainframe": "MAINFRAME_PKG",
-            "dmm": "DMM_FOR_SSM_PKG",
-            "custom": ""
+            # "ENTERPRISE_PKG": "ENT_PKG",
+            "SAN_TELEMETRY_PKG": "TELEMETRY",
+            "SAN_ANALYTICS_PKG": "ANALYTICS",
+            "MAINFRAME_PKG": "MAINFRAME",
+            "DMM_FOR_SSM_PKG": "DMM_FOR_SSM"
         },
         "counted": {}
     },
@@ -51,15 +57,31 @@ custom_licenses = {
         "uncounted": [],
         "counted": {}
     }
-def get_custom_licenses_info():
+def get_license_info():
+    # Составление итогового списка нужных лицензий
     global custom_licenses
+    global licenses_for_generate
     custom_licenses = {
         "uncounted": [],
         "counted": {}
     }
     current_frame = 0
+    stop = False
+    file_id = 1
+    for license in needed_licenses:
+        license_id = ''
+        for id_i in range(0, 17):
+            license_id += str(random.randint(0, 9))
+        licenses_for_generate[file_id] = {}
+        licenses_for_generate[file_id]["name"] = license
+        licenses_for_generate[file_id]["count"] = "uncounted"
+        licenses_for_generate[file_id]["license_id"] = license_id
+        file_id += 1
     for i in counted_custom_license_frame.winfo_children():
-        count = 0
+        license_id = ''
+        for id_i in range(0, 17):
+            license_id += str(random.randint(0, 9))
+        count = 'uncounted'
         name = ''
         state = False
         error = False
@@ -74,22 +96,32 @@ def get_custom_licenses_info():
                     count = j.get()
                 else:
                     error = True
+
         if error == True and state == True:
+            stop = True
             messagebox.showinfo('Ошибка', 'Введено некорректное количество лицензий')
             break
-        if name == '' and state == True:
+        elif name == '' and state == True:
+            stop = True
             messagebox.showinfo('Ошибка', 'Введите название лицензий во всех отмеченных полях')
             break
         elif error == False and state == True:
             if name not in custom_licenses["counted"]:
                 custom_licenses["counted"][name] = 0
                 custom_licenses["counted"][name] = count
+            licenses_for_generate[file_id] = {}
+            licenses_for_generate[file_id]["name"] = name
+            licenses_for_generate[file_id]["count"] = count
+            licenses_for_generate[file_id]["license_id"] = license_id
+            file_id += 1
         current_frame += 1
 
     state = False
     current_frame = 0
-
     for i in uncounted_custom_license_frame.winfo_children():
+        license_id = ''
+        for id_i in range(0, 17):
+            license_id += str(random.randint(0, 9))
         for j in i.winfo_children():
             if type(j) == Checkbutton:
                 if uncounted_custom_vars[current_frame].get() == True:
@@ -98,23 +130,44 @@ def get_custom_licenses_info():
                 license_name = j.get()
         if license_name not in custom_licenses and state == True:
             if license_name == '':
+                stop = True
                 messagebox.showinfo('Ошибка', 'Введите название лицензий во всех отмеченных полях')
+                break
             else:
                 custom_licenses["uncounted"].append(license_name)
+                licenses_for_generate[file_id] = {}
+                licenses_for_generate[file_id]["name"] = license_name
+                licenses_for_generate[file_id]["count"] = 'uncounted'
+                licenses_for_generate[file_id]["license_id"] = license_id
+                file_id += 1
         current_frame += 1
         state = False
-    return custom_licenses
+    return [custom_licenses, stop, licenses_for_generate]
 
 def clicked(device_type):
     """ Обработка нажатия кнопки """
-    custom_licenses = get_custom_licenses_info()
-    if vdh.get() == '' or sku.get() == '':
-        messagebox.showinfo('Ошибка', 'Заполните VDH и SKU и отметьте нужные лицензии!')
+    global current_license
+    global sku_string
+    global vdh_string
+    global licenses_for_generate
+    sku_string = sku.get()
+    vdh_string = vdh.get().replace("VDH=", "")
+    if format.get() == 'new':
+        current_license = new
     else:
-        if needed_licenses == [] and custom_licenses["uncounted"] == [] and custom_licenses["counted"] == {}:
+        current_license = old
+    custom_licenses_info = get_license_info()
+    # custom_licenses = custom_licenses_info[0]
+    error = custom_licenses_info[1]
+    licenses_for_generate = custom_licenses_info[2]
+    if error == False:
+        if vdh.get() == '' or sku.get() == '':
             messagebox.showinfo('Ошибка', 'Заполните VDH и SKU и отметьте нужные лицензии!')
         else:
-            generate_licenses(device_type)
+            if licenses_for_generate == {}:
+                messagebox.showinfo('Ошибка', 'Заполните VDH и SKU и отметьте нужные лицензии!')
+            else:
+                generate_licenses(device_type)
 
 
 def generate_licenses(device_type):
@@ -128,7 +181,7 @@ def generate_licenses(device_type):
             print('Done')
             creating_final_license_files(tn, device_type)
         else:
-            print('Fail\nПолучение root прав... ', end='')
+            print('Failed\nПолучение root прав... ', end='')
             tn.close()
             get_root()
             print('Done')
@@ -174,68 +227,59 @@ def get_root():
 def create_license_files(tn, device_type):
     """ Создание и загрузка файлов лицензий на Nexus """
     print('Создание файлов лицензий в bootflash... ', end='')
+    created_licenses_list = []
     all_licenses_in_bootflash = True
     global licenses_not_in_bootflash
     licenses_not_in_bootflash = []
     id = 0
-    """ Создание файлов предопределённых лицензий """
-    for license in needed_licenses:
-        if license in licenses[device_type]["uncounted"]:
-            license_name = licenses[device_type]["uncounted"][license]
-            file_name = f'{vdh.get().replace("VDH=", "")}_{license_name}.lic'
-            file_id = ('0' + str(id))[-2:]
-            current_license = f'SERVER this_host ANY\nVENDOR cisco\nINCREMENT {license_name} cisco 1.0 permanent uncounted \\\n    VENDOR_STRING=<LIC_SOURCE>MDS_SWIFT</LIC_SOURCE><SKU>{sku.get()}</SKU> \\\n    HOSTID=VDH={vdh.get().replace("VDH=", "")} \\\n    NOTICE="<LicFileID>202203161532072{file_id}</LicFileID><LicLineID>1</LicLineID> \\\n    <PAK></PAK>" SIGN=9F924AA63160'
-            tn.write(b"printf '" + current_license.encode('ascii') + b"' > /bootflash/" + file_name.encode('ascii') + b"\n")
-        id += 1
 
-    """ Создание файлов counted лицензий """
-    for license in custom_licenses["uncounted"]:
-        file_id = ('0' + str(id))[-2:]
-        file_name = f'{vdh.get().replace("VDH=", "")}_{license}.lic'
-        current_license = f'SERVER this_host ANY\nVENDOR cisco\nINCREMENT {license} cisco 1.0 permanent uncounted \\\n    VENDOR_STRING=<LIC_SOURCE>MDS_SWIFT</LIC_SOURCE><SKU>{sku.get()}</SKU> \\\n    HOSTID=VDH={vdh.get().replace("VDH=", "")} \\\n    NOTICE="<LicFileID>202203161532072{file_id}</LicFileID><LicLineID>1</LicLineID> \\\n    <PAK></PAK>" SIGN=9F924AA63160'
-        tn.write(b"printf '" + current_license.encode('ascii') + b"' > /bootflash/" + file_name.encode('ascii') + b"\n")
+    """ Создание файлов в bootflash """
+    for license in licenses_for_generate.items():
+        if needed_licenses == []:
+            name_for_file = license[1]["name"]
+        else:
+            if license[1]["name"] in licenses[device_type]["uncounted"]:
+                name_for_file = licenses[device_type]["uncounted"][license[1]["name"]]
+            else:
+                name_for_file = license[1]["name"]
+        license_name = license[1]["name"]
+        if license[1]["count"] == '0':
+            count = 'uncounted'
+        else:
+            count = license[1]["count"]
+        license_id = license[1]["license_id"]
+        file_id = ('0' + str(license[0]))[-2:]
+        filename = f'{vdh.get().replace("VDH=", "")}_{name_for_file}_{file_id}.lic'
+        sign = '9F924AA63160'
+        license_string = 'SERVER this_host ANY\nVENDOR cisco\n' + current_license.format(license_name=license_name, count=count, sku_string=sku_string,
+                                                      vdh_string=vdh_string, license_id=license_id, file_id=license[0], sign=sign)
+        tn.write(b"printf '" + license_string.encode('ascii') + b"' > /bootflash/" + filename.encode('ascii') + b"\n")
+        created_licenses_list.append(filename)
         id += 1
-
-    """ Создание файлов uncounted лицензий """
-    for license in custom_licenses["counted"].items():
-        count = license[1]
-        file_id = ('0' + str(id))[-2:]
-        file_name = f'{vdh.get().replace("VDH=", "")}_{license[0]}.lic'
-        current_license = f'SERVER this_host ANY\nVENDOR cisco\nINCREMENT {license[0]} cisco 1.0 permanent {count} \\\n    VENDOR_STRING=<LIC_SOURCE>MDS_SWIFT</LIC_SOURCE><SKU>{sku.get()}</SKU> \\\n    HOSTID=VDH={vdh.get().replace("VDH=", "")} \\\n    NOTICE="<LicFileID>202203161532072{file_id}</LicFileID><LicLineID>1</LicLineID> \\\n    <PAK></PAK>" SIGN=9F924AA63160'
-        tn.write(b"printf '" + current_license.encode('ascii') + b"' > /bootflash/" + file_name.encode('ascii') + b"\n")
-        id += 1
-
     tn.write(b'cd /bootflash/\n')
     tn.write(b'ls -l\n')
     time.sleep(1)
-    bootflash_licenses = re.findall(r'\S+.lic', tn.read_very_eager().decode('utf-8'))
-    for license in needed_licenses:
-        if license in licenses[device_type]["uncounted"]:
-            license_name = licenses[device_type]["uncounted"][license]
-            file_name = f'{vdh.get().replace("VDH=", "")}_{license_name}.lic'
-            if file_name not in bootflash_licenses:
-                all_licenses_in_bootflash = False
-                licenses_not_in_bootflash.append(file_name)
 
-    for license in custom_licenses["uncounted"]:
-        file_name = f'{vdh.get().replace("VDH=", "")}_{license}.lic'
-        if file_name not in bootflash_licenses:
+    ''' Проверяем, что в bootflash создались все лицензии'''
+    for license in licenses_for_generate.items():
+        if needed_licenses == []:
+            name_for_file = license[1]["name"]
+        else:
+            if license[1]["name"] in licenses[device_type]["uncounted"]:
+                name_for_file = licenses[device_type]["uncounted"][license[1]["name"]]
+            else:
+                name_for_file = license[1]["name"]
+        file_id = ('0' + str(license[0]))[-2:]
+        filename = f'{vdh.get().replace("VDH=", "")}_{name_for_file}_{file_id}.lic'
+        if filename not in created_licenses_list:
             all_licenses_in_bootflash = False
-            licenses_not_in_bootflash.append(file_name)
-
-    for license in custom_licenses["counted"].items():
-        file_name = f'{vdh.get().replace("VDH=", "")}_{license[0]}.lic'
-        if file_name not in bootflash_licenses:
-            all_licenses_in_bootflash = False
-            licenses_not_in_bootflash.append(file_name)
-
+            licenses_not_in_bootflash.append(license[1]["name"])
     if all_licenses_in_bootflash == True:
         print('Done')
     else:
         return licenses_not_in_bootflash
 
 def telnet_connection():
-    # global tn
     tn = telnetlib.Telnet('172.25.80.171', timeout=10)
     tn.read_until(b"login: ")
     tn.write(user.encode('ascii') + b"\n")
@@ -257,34 +301,37 @@ def creating_final_license_files(tn, device_type):
         tn.write(b'cd /isan/etc/\n')
         time.sleep(1)
         tn.write(line1.encode('ascii') + b'\\x00\\x00' + line2.encode('ascii') + b'\n')
-
-        id = 0
-        for license in needed_licenses:
-            license_name = licenses[device_type]["uncounted"][license]
-            count = 'uncounted'
-            file_id = ('0' + str(id))[-2:]
-            get_license_sign(tn, license_name, count, file_id)
-            id += 1
-        for license in custom_licenses["uncounted"]:
-            license_name = license
-            count = 'uncounted'
-            file_id = ('0' + str(id))[-2:]
-            get_license_sign(tn, license_name, count, file_id)
-            id += 1
-
-        for license in custom_licenses["counted"].items():
-            license_name = license[0]
-            count = license[1]
-            file_id = ('0' + str(id))[-2:]
-            get_license_sign(tn, license_name, count, file_id)
-            id += 1
-
+        for license in licenses_for_generate.items():
+            if needed_licenses == []:
+                name_for_file = license[1]["name"]
+            else:
+                if license[1]["name"] in licenses[device_type]["uncounted"]:
+                    name_for_file = licenses[device_type]["uncounted"][license[1]["name"]]
+                else:
+                    name_for_file = license[1]["name"]
+            file_id = ('0' + str(license[0]))[-2:]
+            filename = f'{vdh.get().replace("VDH=", "")}_{name_for_file}_{file_id}.lic'
+            license_name = license[1]["name"]
+            license[1]["sign"] = get_license_sign(tn, license_name, filename)
+            print('Done')
+            print(f'Удаление {filename} из bootflash...', end='')
+            tn.write(b'rm /bootflash/' + filename.encode('ascii') + b'\n')
+            time.sleep(1)
+            print(f'Done')
+        summary_file = f"{vdh_string}.lic"
+        f = open(summary_file, 'w')
+        f.write('SERVER this_host ANY\nVENDOR cisco\n')
+        for license in licenses_for_generate.items():
+            license_name = license[1]["name"]
+            count = license[1]["count"]
+            license_id = license[1]["license_id"]
+            sign = license[1]["sign"]
+            f.write(current_license.format(license_name=license_name, count=count, sku_string=sku_string, vdh_string=vdh_string, license_id=license_id, file_id=license[0], sign=sign) + '\n')
         print(f'Лицензии успешно сгенерированы и находятся по следующему пути:\n{current_directory}')
         messagebox.showinfo('', f'Лицензии успешно сгенерированы и находятся по следующему пути:\n{current_directory}')
 
-def get_license_sign(tn, license_name, count, file_id):
-    file_name = f'{vdh.get().replace("VDH=", "")}_{license_name}.lic'
-    print(f'Получение подписи для {file_name}... ', end='')
+def get_license_sign(tn, license_name, file_name):
+    print(f'Получение подписи для {license_name}... ', end='')
     tn.write(b'gdb liccheck\n')
     time.sleep(1)
     tn.write(b'break *0x0805D4E7\n')
@@ -305,57 +352,19 @@ def get_license_sign(tn, license_name, count, file_id):
     sign = ''
     for couple in reversed(split_by_two):
         sign += str(couple).upper()
-    f = open(file_name, 'w')
-    f.write(
-        f'SERVER this_host ANY\nVENDOR cisco\nINCREMENT {license_name} cisco 1.0 permanent {count} \\\n    VENDOR_STRING=<LIC_SOURCE>MDS_SWIFT</LIC_SOURCE><SKU>{sku.get()}</SKU> \\\n    HOSTID=VDH={vdh.get().replace("VDH=", "")} \\\n    NOTICE="<LicFileID>202203161532072{file_id}</LicFileID>1</LicLineID> \\\n    <PAK></PAK>" SIGN={sign}')
-    print('Done')
-    print(f'Удаление {file_name} из bootflash...', end='')
-    tn.write(b'rm /bootflash/' + file_name.encode('ascii') + b'\n')
-    time.sleep(1)
-    print(f'Done')
+    return sign
 
-def get_counted_license_information(mds_counted_licenses_frame):
-    """ Получение имени counted лицензии и количества, внесение данных в основной словарь """
-    found_count = True
-    for i in mds_counted_licenses_frame.winfo_children():                           # Проход по основному фрейму
-        if found_count == False:
-            messagebox.showinfo('Ошибка', 'В поле количества лицензий введено неправильное значение')
-            break
-        else:
-            for j in i.winfo_children():
-                if type(j) == Entry:
-                    count = j.get()
-                elif type(j) == Checkbutton:
-                    name = j.cget("text")
-                    if name in needed_licenses_counted:
-                        if name not in licenses['mds']['counted']:
-                            licenses['mds']['counted'][name] = {'name': '', 'count': ''}
-                        if count != '' and re.search(r'\d+', count):
-                                licenses['mds']['counted'][name]["count"] = count
-                        else:
-                            found_count = False
-                            break
-                    else:
-                        continue
-    return licenses
-
-def update_needed_licenses(license, device_type_temp, license_type):
+def update_needed_licenses(license, device_type_temp):
     global device_type
     device_type = device_type_temp
-    if license_type == 'uncounted':
-        if license in needed_licenses:
-            needed_licenses.remove(license)
-        elif license not in needed_licenses:
-            needed_licenses.append(license)
-    elif license_type == 'counted':
-            if license in needed_licenses_counted:
-                needed_licenses_counted.remove(license)
-            elif license not in needed_licenses_counted:
-                needed_licenses_counted.append(license)
-    if needed_licenses == [] and needed_licenses_counted == []:
+    if license in needed_licenses:
+        needed_licenses.remove(license)
+    elif license not in needed_licenses:
+        needed_licenses.append(license)
+    if needed_licenses == []:
         current_switch_type = 'all'
     else:
-        for license_list in [needed_licenses, needed_licenses_counted]:
+        for license_list in needed_licenses:
             for lic in license_list:
                 if lic in licenses["nexus"]["uncounted"]:
                     current_switch_type = 'nexus'
@@ -381,7 +390,6 @@ def update_needed_licenses(license, device_type_temp, license_type):
             widget.destroy()
         mds_checkbutton(current_switch_type)
     return needed_licenses
-    return needed_licenses_counted
     return device_type
 
 def nexus_checkbutton(current_switch_type):
@@ -391,32 +399,26 @@ def nexus_checkbutton(current_switch_type):
         blocked = DISABLED
     else:
         blocked = ACTIVE
-    for lic in licenses["nexus"]["uncounted"]:
-        if lic != 'custom':
-            var = tkinter.BooleanVar()
-            cb = Checkbutton(nexus_frame, text=licenses["nexus"]["uncounted"][lic], state=blocked, variable=var,
-                             onvalue=True,
-                             offvalue=False,
-                             command=lambda lic=lic: update_needed_licenses(lic, 'nexus', 'uncounted'))
-            cb.pack(anchor="w")
+    for lic in licenses["nexus"]["uncounted"].items():
+        var = tkinter.BooleanVar()
+        cb = Checkbutton(nexus_frame, text=lic[0], state=blocked, variable=var,
+                         onvalue=True,
+                         offvalue=False,
+                         command=lambda lic=lic[0]: update_needed_licenses(lic, 'nexus'))
+        cb.pack(anchor="w")
 
 def mds_checkbutton(current_switch_type):
     """ Отрисовка MDS checkbutton """
-    global mds_counted_licenses_frame
     if current_switch_type == 'nexus':
         blocked = DISABLED
     else:
         blocked = ACTIVE
-    for mds_lic in licenses["mds"]["uncounted"]:
-        if mds_lic != 'custom':
-            var = tkinter.BooleanVar()
-            mds_cb = Checkbutton(mds_frame, text=licenses["mds"]["uncounted"][mds_lic], state=blocked, variable=var, onvalue=True,
-                             offvalue=False,
-                             command=lambda mds_lic=mds_lic: update_needed_licenses(mds_lic, 'mds', 'uncounted'))
-            mds_cb.pack(anchor="w")
-
-    mds_counted_licenses_frame = ttk.Frame(mds_frame, padding=[0, 0])
-    mds_counted_licenses_frame.pack(anchor="w", padx=1)
+    for mds_lic in licenses["mds"]["uncounted"].items():
+        var = tkinter.BooleanVar()
+        mds_cb = Checkbutton(mds_frame, text=mds_lic[0], state=blocked, variable=var, onvalue=True,
+                         offvalue=False,
+                         command=lambda mds_lic=mds_lic[0]: update_needed_licenses(mds_lic, 'mds'))
+        mds_cb.pack(anchor="w")
 
 def create_custom_license_checkbutton():
     uncounted_custom_vars = []
@@ -450,20 +452,41 @@ if __name__ == "__main__":
     global nexus_frame
     """ Основная функция, вывод на экран """
     window = Tk()
-    window.title("License Generator")
+    window.title("License Generator 2.0")
     window.geometry("450x540")
 
-    vdh_frame = ttk.LabelFrame(text='VDH', padding=[0, 0])  # borderwidth=1, relief=SOLID,
+    """ Фрейм выбора формата лицензии"""
+    first_frame = ttk.Frame(padding=[0, 0])
+    first_frame.pack(anchor='w', padx=0)
+
+    vdh_sku_frame = ttk.Frame(first_frame, padding=[0, 0])
+    vdh_sku_frame.pack(anchor='w', side=LEFT, padx=0)
+
+    format_frame = ttk.LabelFrame(first_frame, text='Format', padding=[0, 0])
+    format_frame.pack(anchor='nw', side=RIGHT, padx=0)
+
+    vdh_frame = ttk.LabelFrame(vdh_sku_frame, text='VDH', padding=[0, 0])  # borderwidth=1, relief=SOLID,
     vdh_frame.pack(anchor='w', padx=10)
 
     vdh = Entry(vdh_frame, width=33)
     vdh.pack(anchor='w')
 
-    sku_frame = ttk.LabelFrame(text='SKU', padding=[0, 0])
+    sku_frame = ttk.LabelFrame(vdh_sku_frame, text='SKU', padding=[0, 0])
     sku_frame.pack(anchor='w', padx=10)
 
     sku = Entry(sku_frame, width=33)
     sku.pack(anchor='w')
+
+    new_format = "new"
+    old_format = "old"
+
+    format = StringVar(value=new_format)
+
+    new_format = Radiobutton(format_frame, text='New format', value=new_format, variable=format)
+    new_format.pack(anchor='n', padx=1)
+
+    old_format = Radiobutton(format_frame, text='Old format', value=old_format, variable=format)
+    old_format.pack(anchor='n', padx=1)
 
     licenses_frame = ttk.Frame(padding=[0, 0])
     licenses_frame.pack(anchor='w', padx=5)
