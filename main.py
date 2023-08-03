@@ -361,19 +361,22 @@ def update_needed_licenses(license, device_type_temp):
         needed_licenses.remove(license)
     elif license not in needed_licenses:
         needed_licenses.append(license)
+    print([needed_licenses])
     if needed_licenses == []:
         current_switch_type = 'all'
     else:
-        for license_list in needed_licenses:
-            for lic in license_list:
-                if lic in licenses["nexus"]["uncounted"]:
-                    current_switch_type = 'nexus'
-                    break
-                elif lic in licenses["mds"]["uncounted"]:
-                    current_switch_type = 'mds'
-                    break
-                else:
-                    current_switch_type = 'all'
+        for lic in needed_licenses:
+            print("lic", lic)
+            if lic in licenses["nexus"]["uncounted"]:
+                current_switch_type = 'nexus'
+                print('nexus')
+                break
+            elif lic in licenses["mds"]["uncounted"]:
+                current_switch_type = 'mds'
+                break
+            else:
+                current_switch_type = 'all'
+    print('test1')
     if current_switch_type == 'mds':
         for widget in nexus_frame.winfo_children():
             widget.destroy()
@@ -381,6 +384,7 @@ def update_needed_licenses(license, device_type_temp):
     elif current_switch_type == 'nexus':
         for widget in mds_frame.winfo_children():
             widget.destroy()
+            print('test222')
         mds_checkbutton(current_switch_type)
     else:
         for widget in nexus_frame.winfo_children():
@@ -389,6 +393,7 @@ def update_needed_licenses(license, device_type_temp):
         for widget in mds_frame.winfo_children():
             widget.destroy()
         mds_checkbutton(current_switch_type)
+    print('test2')
     return needed_licenses
     return device_type
 
@@ -406,6 +411,7 @@ def nexus_checkbutton(current_switch_type):
                          offvalue=False,
                          command=lambda lic=lic[0]: update_needed_licenses(lic, 'nexus'))
         cb.pack(anchor="w")
+    print('test3')
 
 def mds_checkbutton(current_switch_type):
     """ Отрисовка MDS checkbutton """
